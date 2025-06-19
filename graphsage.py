@@ -158,15 +158,26 @@ def tune_hyperparameters():
     }
 
     for param_name, values in param_grid.items():
-        print(f"Tuning {param_name}...")
+        print(f"Tuning {param_name}")
         for val in values:
             config = default_config.copy()
             config[param_name] = val
             print(f"  → {param_name} = {val}")
             metrics = train_model(config)
-            for k in [10, 20, 30, 50]:
-                print(f"    Recall@{k}: {metrics[k]['R']:.4f}  Precision@{k}: {metrics[k]['P']:.4f}  HR@{k}: {metrics[k]['HR']:.4f}  NDCG@{k}: {metrics[k]['NDCG']:.4f}")
-            print("\n")
+            print(f"Result @10: {metrics[10]}\n")
+            save_result(param_name, val, metrics[10])
+
+def save_result(param_name, param_value, metrics, folder='./result/'):
+    os.makedirs(folder, exist_ok=True)
+    result_file = os.path.join(folder, f"graphsage_tune_{param_name}.csv")
+    df_row = pd.DataFrame([{**metrics, param_name: param_value}])
+    if os.path.exists(result_file):
+        df = pd.read_csv(result_file)
+        df = pd.concat([df, df_row], ignore_index=True)
+    else:
+        df = df_row
+    df.to_csv(result_file, index=False)
+
 
 if __name__ == "__main__":
     tune_hyperparameters()

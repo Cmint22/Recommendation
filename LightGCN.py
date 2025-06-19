@@ -29,9 +29,7 @@ class LightGCN(torch.nn.Module):
 # ------------------------- Utility Functions ------------------------- #
 def load_data(train_path, test_path):
     train_df = pd.read_csv(train_path, sep=' ', names=["user", "item", "rating"])
-    train_df = train_df.sample(n=100, random_state=42) 
     test_df = pd.read_csv(test_path, sep=' ', names=["user", "item", "rating"])
-    test_df = test_df.sample(n=100, random_state=42)
     num_users = max(train_df['user'].max(), test_df['user'].max()) + 1
     num_items = max(train_df['item'].max(), test_df['item'].max()) + 1
 
