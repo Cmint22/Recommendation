@@ -172,7 +172,7 @@ def save_result(param_name, param_value, metrics, folder='./result/'):
         df = pd.concat([df, df_row], ignore_index=True)
     else:
         df = df_row
-    # df.to_csv(result_file, index=False)
+    df.to_csv(result_file, index=False)
 
 if __name__ == "__main__":
     tune_hyperparameters()

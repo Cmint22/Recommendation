@@ -159,6 +159,19 @@ def tune_hyperparameters():
             print(f"→ {param_name} = {val}")
             metrics = train_model(config)
             print(f"Result @10: {metrics[10]}\n")
+            save_result(param_name, val, metrics[10])
 
+def save_result(param_name, param_value, metrics, folder='./result/'):
+    os.makedirs(folder, exist_ok=True)
+    result_file = os.path.join(folder, f"lightgcn_tune_{param_name}.csv")
+    df_row = pd.DataFrame([{**metrics, param_name: param_value}])
+    if os.path.exists(result_file):
+        df = pd.read_csv(result_file)
+        df = pd.concat([df, df_row], ignore_index=True)
+    else:
+        df = df_row
+    df.to_csv(result_file, index=False)
+
+    
 if __name__ == "__main__":
     tune_hyperparameters()
