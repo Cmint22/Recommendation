@@ -138,6 +138,8 @@ def tune_ncl_hyperparams():
     default_config = {
         "embedding_size": 64,
         "n_layers": 3,
+        "lr": 0.01,
+        "weight_decay": 1e-4,
         "reg_weight": 1e-4,
         "ssl_temp": 0.1,
         "ssl_reg": 1e-7,
@@ -152,6 +154,8 @@ def tune_ncl_hyperparams():
     param_grid = {
         "embedding_size": [32, 64, 128],
         "n_layers": [1, 2, 3],
+        "lr": [0.001, 0.01, 0.1],
+        "weight_decay": [0.0, 1e-4, 1e-3],
         "reg_weight": [1e-5, 1e-4, 1e-3],
         "ssl_temp": [0.1, 0.2, 0.5],
         "ssl_reg": [1e-7, 1e-6, 1e-5],
@@ -182,7 +186,7 @@ def save_result(param_name, param_value, metrics, folder='./result/'):
         df = pd.concat([df, df_row], ignore_index=True)
     else:
         df = df_row
-    df.to_csv(result_file, index=False)
+    # df.to_csv(result_file, index=False)
 
 if __name__ == "__main__":
     tune_ncl_hyperparams()
