@@ -144,11 +144,12 @@ def tune_ncl_hyperparams():
         "ssl_temp": 0.1,
         "ssl_reg": 1e-7,
         "hyper_layers": 1,
-        "alpha": 1,
-        "proto_reg": 8e-8,
-        "num_clusters": 1000,
+        "alpha": 1.5,
+        "proto_reg": 1e-7,
+        "num_clusters": 2000,
         "m_step": 1,
-        "warmup_steps": 20
+        "warmup_steps": 20,
+        "tau": 0.005
     }
 
     param_grid = {
@@ -160,11 +161,12 @@ def tune_ncl_hyperparams():
         "ssl_temp": [0.1, 0.2, 0.5],
         "ssl_reg": [1e-7, 1e-6, 1e-5],
         "hyper_layers": [1, 2, 3],
-        "alpha": [0.5, 1.0, 1.5],
-        "proto_reg": [8e-8, 1e-7, 1e-6],
-        "num_clusters": [500, 1000, 2000],
+        "alpha": [1.0, 1.5, 2.0],
+        "proto_reg": [1e-8, 1e-7, 1e-6],
+        "num_clusters": [1000, 2000, 3000],
         "m_step": [1, 2, 3],
-        "warmup_steps": [10, 20, 30]
+        "warmup_steps": [10, 20, 30],
+        "tau": [0.001, 0.005, 0.01, 0.05, 0.1]
     }
 
     for param_name, values in param_grid.items():
