@@ -372,25 +372,23 @@ if __name__ == '__main__':
     test_set = load_data(test_file)
     print(f"Loaded {len(train_set)} training interactions")
     print(f"Loaded {len(test_set)} test interactions")
-
     base_conf = {
         'model': {'name': 'SSL4Rec'},
         'training.set': train_file,
         'test.set': test_file,
-        'output': './output/',
+        'output': './results/',
     }
-
     print("SSL4Rec Hyperparameter Tuning Framework\n" + "="*50)
     print("This script will tune the following hyperparameters:")
     print("- Embedding size: [32, 64, 128]")
     print("- Batch size: [1024, 2048, 4096]")
     print("- Learning rate: [0.001]")
+    print("- Regularization weight: [0.0001, 0.001, 0.01]")
     print("- Regularization lambda: [0.0001]")
     print("- SSL4Rec tau: [0.07, 0.1, 0.2]")
     print("- SSL4Rec alpha: [0.1, 0.2, 0.3]")
     print("- SSL4Rec drop: [0.1, 0.2, 0.3]")
     print(f"Total combinations: 243 = {3*3*1*1*3*3*3}\n")
-
     tuner = Tuner(train_set, test_set, base_conf)
     tuner.run()
     tuner.save()
