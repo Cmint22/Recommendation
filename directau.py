@@ -299,7 +299,7 @@ class DirectAUTuner:
         self.base = base_config
         self.results = []
         self.grid = {
-            'embedding.size': [8, 16, 32, 64, 128, 256],
+            'embedding.size': [16, 32, 64, 128, 256, 512],
             'batch.size': [16, 32, 64, 128, 256, 512, 1024, 2048],
             'learning.rate': [1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3],
             'reg.lambda': [1e-5, 1e-4, 1e-3],
