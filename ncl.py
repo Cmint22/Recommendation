@@ -442,7 +442,7 @@ class Tuner:
         #     'NCL.hyper_layers': [2]
         # }
         self.grid = {
-            'embedding.size': [32, 64, 128, 256],
+            'embedding.size': [32, 64, 128, 256, 512, 1024],
             'batch.size': [256, 512, 1024, 2048, 4096, 8192],
             'learning.rate': [1e-4, 5e-4, 1e-3, 5e-3, 1e-2, 5e-2],
             'reg.lambda': [1e-4, 5e-4, 1e-3],
