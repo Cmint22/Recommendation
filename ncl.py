@@ -443,7 +443,7 @@ class Tuner:
         # }
         self.grid = {
             'embedding.size': [32, 64, 128, 256, 512, 1024],
-            'batch.size': [256, 512, 1024, 2048, 4096, 8192],
+            'batch.size': [64, 128, 256, 512, 1024, 2048, 4096],
             'learning.rate': [1e-4, 5e-4, 1e-3, 5e-3, 1e-2, 5e-2],
             'reg.lambda': [1e-4, 5e-4, 1e-3],
             'max.epoch': [1],
@@ -583,8 +583,8 @@ if __name__ == '__main__':
     print(f"Loaded {len(test_set)} test interactions")
     print("\nNCL Hyperparameter Tuning Framework\n" + "="*80)
     print("This script will tune the following hyperparameters:")
-    print("- Embedding size: [32, 64, 128, 256]")
-    print("- Batch size: [256, 512, 1024, 2048, 4096, 8192]")
+    print("- Embedding size: [32, 64, 128, 256, 512, 1024]")
+    print("- Batch size: [64, 128, 256, 512, 1024, 2048, 4096]")
     print("- Learning rate: [1e-4, 5e-4, 1e-3, 5e-3, 1e-2, 5e-2]")
     print("- Regularization lambda: [1e-4, 5e-4, 1e-3]")
     print("- Max epochs: [1]")
@@ -595,7 +595,7 @@ if __name__ == '__main__':
     print("- NCL alpha: [0.3, 0.5, 0.6]")
     print("- NCL num clusters: [20, 30, 50, 100, 200, 300]")
     print("- NCL hyper layers: [2, 3, 4]")
-    print(f"Total combinations: 3149280 = {4*6*6*3*5*3*3*3*3*6*3}\n")
+    # print(f"Total combinations: 3149280 = {4*6*6*3*5*3*3*3*3*6*3}\n")
     tuner = Tuner(train_set, test_set, base_config)
     tuner.run()
     tuner.save()

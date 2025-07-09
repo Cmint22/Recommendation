@@ -161,7 +161,7 @@ class GCLTuner:
         print("- Regularization weight: [1e-5, 1e-4, 1e-3]")
         print("- SSL weight: [1e-5, 1e-4, 1e-3]")
         print("- Batch size: [128, 256, 512, 1024, 2048, 4096]")
-        print("- Max epochs: [1, 2, 3]")
+        print("- Max epochs: [1]")
         combos = list(itertools.product(
             self.grid['embedding_size'],
             self.grid['num_layers'],
