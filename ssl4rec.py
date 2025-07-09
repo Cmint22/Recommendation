@@ -272,11 +272,11 @@ class Tuner:
         self.base = base_conf
         self.results = []
         self.grid = { 
-            'n.layers': [1, 2, 3],
-            'embedding.size': [32, 64, 128],
-            'batch.size': [1024, 2048, 4096],
-            'learning.rate': [0.001],
-            'reg.lambda': [0.0001],
+            'n.layers': [1, 2, 3, 4, 5],
+            'embedding.size': [32, 64, 128, 256, 512, 1024],
+            'batch.size': [128, 256, 512, 1024, 2048, 4096],
+            'learning.rate': [0.00001, 0.0001, 0.001, 0.01, 0.1, 0.2],
+            'reg.lambda': [0.0001, 0.001, 0.01],
             'reg.weight': [0.0001, 0.001, 0.01],
             'SSL4Rec.tau': [0.07, 0.1, 0.2],
             'SSL4Rec.alpha': [0.1, 0.2, 0.3],
