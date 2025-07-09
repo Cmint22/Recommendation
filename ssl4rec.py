@@ -388,7 +388,7 @@ if __name__ == '__main__':
     print("- SSL4Rec tau: [0.07, 0.1, 0.2]")
     print("- SSL4Rec alpha: [0.1, 0.2, 0.3]")
     print("- SSL4Rec drop: [0.1, 0.2, 0.3]")
-    # print(f"Total combinations: 243 = {3*3*1*1*3*3*3}\n")
+    print(f"Total combinations: 243 = {3*3*1*1*3*3*3}\n")
     tuner = Tuner(train_set, test_set, base_conf)
     tuner.run()
     tuner.save()
