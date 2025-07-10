@@ -1,5 +1,3 @@
-# GCL Hyperparameter Tuning Script - DirectAU-style Output & Batch Logging
-
 import os
 import json
 import copy
