@@ -401,4 +401,4 @@ if __name__ == '__main__':
     print("\nDirectAU Hyperparameter Tuning Framework\n" + "="*80)
     tuner = DirectAUTuner(train_set, test_set, base_config)
     tuner.run()
-    print_summary(tuner.results)
+    # print_summary(tuner.results)

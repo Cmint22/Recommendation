@@ -381,4 +381,4 @@ if __name__ == '__main__':
     print("SSL4Rec Hyperparameter Tuning Framework\n" + "="*80)
     tuner = SSL4RecTuner(train_set, test_set, base_conf)
     tuner.run()
-    print_summary(tuner.results)
+    # print_summary(tuner.results)

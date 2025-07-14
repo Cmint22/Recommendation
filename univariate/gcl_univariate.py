@@ -171,7 +171,10 @@ class GCLTuner:
         print(f"\nTotal hyperparameter combinations to train: {total_configs}")
         for i, config in enumerate(all_configs, 1):
             print(f"\n{'='*80}")
-            print(f"[{i}/{total_configs}] Training with configuration:")
+            # print(f"[{i}/{total_configs}] Training with configuration:")
+            changed_param = [(k, v) for k, v in config.items() if self.default_config.get(k) != v]
+            changed_str = ', '.join(f"{k}={v}" for k, v in changed_param)
+            print(f"[{i}/{total_configs}] Training with configuration: {changed_str}")
             for k, v in config.items():
                 print(f"{k}: {v}")
             model = GRACEModel(num_users, num_items, emb_size=config["embedding_size"], num_layers=config["num_layers"]).to(device)

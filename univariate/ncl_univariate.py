@@ -421,14 +421,12 @@ class LGCNEncoder(nn.Module):
         return final_emb[:self.data.user_num], final_emb[self.data.user_num:], all_emb
 
 
-# === Tuner chỉnh sửa để tinh chỉnh từng siêu tham số một cách độc lập ===
 
 class Tuner:
     def __init__(self, train_set, test_set, base_conf):
         self.train_set, self.test_set = train_set, test_set
         self.base = base_conf
         self.results = []
-        # Tinh chỉnh từng siêu tham số, giữ các tham số còn lại ở giá trị mặc định
         self.grid = {
             'embedding.size': [64, 128, 256, 512, 1024],
             'batch.size': [256, 512, 1024, 2048, 4096],
@@ -555,4 +553,4 @@ if __name__ == '__main__':
     print("\nNCL Hyperparameter Tuning Framework\n" + "="*80)
     tuner = Tuner(train_set, test_set, base_config)
     tuner.run()
-    print_summary(tuner.results)
+    # print_summary(tuner.results)
