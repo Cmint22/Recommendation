@@ -345,7 +345,7 @@ class BUIRTuner:
         self.train_set, self.test_set = train_set, test_set
         self.base = base_config
         self.results = []
-        self. grid = { 
+        self.grid = { 
             'factors': [16, 32, 64, 128, 256, 512],
             'batch_size': [128, 256, 512, 1024, 2048, 4096], 
             'emb_size': [16, 32, 64, 128, 256, 512], 
