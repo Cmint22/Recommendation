@@ -1058,6 +1058,8 @@ class DiffNet(SocialRecommender, GraphRecommender):
         self.reg_lambda = conf['reg_lambda']
         self.reg_lambda_u = conf['reg_lambda_u']
         self.reg_lambda_i = conf['reg_lambda_i']
+        self.reg_lambda_b = conf['reg_lambda_b']
+        self.reg_lambda_s = conf['reg_lambda_s']
         self.n_layers = conf['n_layer']
         self.regU = float(conf['reg_lambda']) if 'regU' in conf else 1e-4
         self.emb_size = int(conf['emb_size']) if 'emb_size' in conf else 64
@@ -1162,6 +1164,8 @@ class DiffNetTuner:
             'reg_lambda': [0.00001, 0.0001, 0.001, 0.01, 0.1],
             'reg_lambda_u': [0.00001, 0.0001, 0.001, 0.01, 0.1],
             'reg_lambda_i': [0.00001, 0.0001, 0.001, 0.01, 0.1],
+            'reg_lambda_b': [0.0001, 0.001, 0.01, 0.1, 0.2],
+            'reg_lambda_s': [0.001, 0.01, 0.1, 0.2, 0.5],
             'n_layer': [1, 2, 3, 4]
         }
         self.default = {
@@ -1172,6 +1176,8 @@ class DiffNetTuner:
             'reg_lambda': 0.0001,
             'reg_lambda_u': 0.001,
             'reg_lambda_i': 0.01,
+            'reg_lambda_b': 0.2,
+            'reg_lambda_s': 0.2,
             'n_layer': 2
         }
 
@@ -1207,6 +1213,8 @@ class DiffNetTuner:
             'reg_lambda': params['reg_lambda'],
             'reg_lambda_u': params['reg_lambda_u'],
             'reg_lambda_i': params['reg_lambda_i'],
+            'reg_lambda_b': params['reg_lambda_b'],
+            'reg_lambda_s': params['reg_lambda_s'],
             'num.max.epoch': 1,
             'item.ranking.topN': [10, 20, 30, 50],
             'evaluation.setup': 'cv -k 1 -p on -rand-seed 1',

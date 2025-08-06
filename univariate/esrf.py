@@ -1020,6 +1020,8 @@ class ESRF(SocialRecommender, GraphRecommender):
         self.reg_lambda = conf['reg_lambda']
         self.reg_lambda_u = conf['reg_lambda_u']
         self.reg_lambda_i = conf['reg_lambda_i']
+        self.reg_lambda_s = conf['reg_lambda_s']
+        self.reg_lambda_b = conf['reg_lambda_b']
         self.K = conf['K']
         self.beta = conf['beta']
         self.n_layers = conf['n_layer']
@@ -1377,6 +1379,8 @@ class ESRFTuner:
             'reg_lambda': [0.00001, 0.0001, 0.001, 0.01, 0.1, 0.2],
             'reg_lambda_u': [0.00001, 0.0001, 0.001, 0.01, 0.1, 0.2],
             'reg_lambda_i': [0.00001, 0.0001, 0.001, 0.01, 0.1, 0.2],
+            'reg_lambda_s': [0.001, 0.01, 0.1, 0.2, 0.5],
+            'reg_lambda_b': [0.001, 0.01, 0.1, 0.2, 0.5],
             'K': [10, 20, 30],
             'beta': [0.1, 0.2, 0.3],
             'n_layer': [1, 2, 3, 4]
@@ -1389,6 +1393,8 @@ class ESRFTuner:
             'reg_lambda': 0.001,
             'reg_lambda_u': 0.001,
             'reg_lambda_i': 0.01,
+            'reg_lambda_s': 0.2,
+            'reg_lambda_b': 0.2,
             'K': 30,
             'beta': 0.2,
             'n_layer': 2
@@ -1426,6 +1432,8 @@ class ESRFTuner:
             'reg_lambda': params['reg_lambda'],
             'reg_lambda_u': params['reg_lambda_u'],
             'reg_lambda_i': params['reg_lambda_i'],
+            'reg_lambda_s': params['reg_lambda_s'],
+            'reg_lambda_b': params['reg_lambda_b'],
             'K': params['K'],
             'beta': params['beta'],
             'num.max.epoch': 1,
