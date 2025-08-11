@@ -1,5 +1,3 @@
-from base.graphRecommender import GraphRecommender
-from base.socialRecommender import SocialRecommender
 import torch, os, traceback, math, heapq, random, json, copy
 import torch.nn as nn
 import torch.nn.functional as F
@@ -1096,19 +1094,21 @@ class ESRF(SocialRecommender, GraphRecommender):
 
     def convert_sparse_matrix_to_torch_sparse_tensor(self, X):
         coo = X.tocoo().astype(np.float32)
-        indices = torch.from_numpy(np.vstack((coo.row, coo.col))).long()
-        values = torch.from_numpy(coo.data).float()
+        indices = torch.from_numpy(np.vstack((coo.row, coo.col)).astype(np.int64))
+        values = torch.from_numpy(coo.data.astype(np.float32))
         shape = torch.Size(coo.shape)
-        return torch.sparse.FloatTensor(indices, values, shape)
+        indices = indices.to(self.device)
+        values = values.to(self.device)
+        return torch.sparse.FloatTensor(indices, values, shape).to(self.device)
 
     def sparse_mx_to_torch_sparse_tensor(self, sparse_mx):
-        """Convert a scipy sparse matrix to a torch sparse tensor."""
         sparse_mx = sparse_mx.tocoo().astype(np.float32)
-        indices = torch.from_numpy(
-            np.vstack((sparse_mx.row, sparse_mx.col)).astype(np.int64))
-        values = torch.from_numpy(sparse_mx.data)
+        indices = torch.from_numpy(np.vstack((sparse_mx.row, sparse_mx.col)).astype(np.int64))
+        values = torch.from_numpy(sparse_mx.data.astype(np.float32))
         shape = torch.Size(sparse_mx.shape)
-        return torch.sparse.FloatTensor(indices, values, shape)
+        indices = indices.to(self.device)
+        values = values.to(self.device)
+        return torch.sparse.FloatTensor(indices, values, shape).to(self.device)
 
     class Generator(nn.Module):
         def __init__(self, num_users, emb_size, n_layers, K):
@@ -1197,8 +1197,8 @@ class ESRF(SocialRecommender, GraphRecommender):
             items = [self.data.item[item] for item in items]
             self.listed_data.append(items)
         # Create PyTorch models
-        self.generator = self.Generator(self.num_users, self.emb_size, self.n_layers_G, self.K)
-        self.discriminator = self.Discriminator(self.num_users, self.num_items, self.emb_size, self.n_layers_D)
+        self.generator = self.Generator(self.num_users, self.emb_size, self.n_layers_G, self.K).to(self.device)
+        self.discriminator = self.Discriminator(self.num_users, self.num_items, self.emb_size, self.n_layers_D).to(self.device)
         # Initialize optimizers
         self.g_optimizer = optim.Adam(self.generator.parameters(), lr=self.lRate * 5)
         self.d_optimizer = optim.Adam(self.discriminator.parameters(), lr=self.lRate)
@@ -1209,8 +1209,8 @@ class ESRF(SocialRecommender, GraphRecommender):
     def trainModel(self):
         # Build adjacency matrices
         A = self.buildMotifInducedAdjacencyMatrix()
-        A_tensor = self.convert_sparse_matrix_to_torch_sparse_tensor(A)
-        norm_adj = self.create_joint_sparse_adj_tensor()        
+        A_tensor = self.convert_sparse_matrix_to_torch_sparse_tensor(A).to(self.device)
+        norm_adj = self.create_joint_sparse_adj_tensor().to(self.device)        
         self.attentiveTraining = 0
         self.bestPerformance = []
         self.initModel()
@@ -1337,7 +1337,7 @@ class ESRF(SocialRecommender, GraphRecommender):
                 if current_performance_sum > best_performance_sum:
                     self.bestU = self.U.copy()
                     self.bestV = self.V.copy()
-                    # saveModel() is called in the parent class's ranking_performance method
+                    # saveModel()
         # Use best embeddings for inference
         if self.bestU is not None and self.bestV is not None:
             self.U, self.V = self.bestU, self.bestV

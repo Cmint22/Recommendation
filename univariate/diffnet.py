@@ -934,8 +934,8 @@ class DeepRecommender(IterativeRecommender):
 
     def initModel(self):
         super(DeepRecommender, self).initModel()
-        self.user_embeddings = nn.Parameter(torch.randn(self.num_users, self.emb_size) * 0.005).to(self.device)
-        self.item_embeddings = nn.Parameter(torch.randn(self.num_items, self.emb_size) * 0.005).to(self.device)        
+        self.user_embeddings = nn.Parameter(torch.randn(self.num_users, self.emb_size, device=self.device) * 0.005)
+        self.item_embeddings = nn.Parameter(torch.randn(self.num_items, self.emb_size, device=self.device) * 0.005)
         self.u_idx = None
         self.v_idx = None
         self.r = None

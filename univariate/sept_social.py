@@ -429,7 +429,7 @@ class SEPT(GraphRecommender):
                 aug_mat = self.norm_adj
 
             for batch in next_batch_pairwise(self.data, self.batch_size):
-                user_idx, pos_idx, neg_idx = map(lambda x: torch.LongTensor(x).to(self.device), batch)
+                user_idx, pos_idx, neg_idx = map(lambda x: torch.tensor(x, dtype=torch.long, device=self.device), batch)
                 ego_embeddings = torch.cat([self.user_embeddings, self.item_embeddings], dim=0)
                 self.rec_user_embeddings, self.rec_item_embeddings = self.encoder(ego_embeddings, self.norm_adj, self.n_layers)
                 self.aug_user_embeddings, self.aug_item_embeddings = self.encoder(ego_embeddings, aug_mat, self.n_layers)
