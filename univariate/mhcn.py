@@ -1,4 +1,3 @@
-from base.graph_recommender import GraphRecommender
 import tensorflow as tf
 import scipy.sparse as sp
 import numpy as np
@@ -295,7 +294,7 @@ class GraphRecommender(Recommender):
             rated, _ = self.data.user_rated(user)
             for i in rated:
                 scores[self.data.item[i]] = -1e8
-            top_items = torch.topk(torch.tensor(scores), self.max_N)
+            top_items = torch.topk(torch.tensor(scores, device=device), self.max_N)
             rec_list[user] = list(zip([self.data.id2item[i.item()] for i in top_items.indices], top_items.values.tolist()))
         return rec_list
 
@@ -326,6 +325,7 @@ class MHCN(GraphRecommender):
         self.reg = conf.get('reg_lambda', 0.0001)
         self.maxEpoch = int(self.config['max.epoch'])
         self.social_data = Relation(conf, social_data, self.data.user)
+        self.to(device)
 
     def print_model_info(self):
         super(MHCN, self).print_model_info()
@@ -370,8 +370,8 @@ class MHCN(GraphRecommender):
     def build(self):
         self.n_channel = 4
         # Initialize user and item embeddings
-        self.user_embeddings = nn.Parameter(torch.FloatTensor(self.data.user_num, self.emb_size))
-        self.item_embeddings = nn.Parameter(torch.FloatTensor(self.data.item_num, self.emb_size))
+        self.user_embeddings = nn.Parameter(torch.empty(self.data.user_num, self.emb_size, device=device))
+        self.item_embeddings = nn.Parameter(torch.empty(self.data.item_num, self.emb_size, device=device))
         nn.init.xavier_uniform_(self.user_embeddings)
         nn.init.xavier_uniform_(self.item_embeddings)        
         # Define learnable parameters
@@ -381,16 +381,16 @@ class MHCN(GraphRecommender):
         self.sgating_bias = nn.ParameterDict()
         for i in range(self.n_channel):
             channel = str(i + 1)
-            self.gating_weights[channel] = nn.Parameter(torch.FloatTensor(self.emb_size, self.emb_size))
-            self.gating_bias[channel] = nn.Parameter(torch.FloatTensor(1, self.emb_size))
-            self.sgating_weights[channel] = nn.Parameter(torch.FloatTensor(self.emb_size, self.emb_size))
-            self.sgating_bias[channel] = nn.Parameter(torch.FloatTensor(1, self.emb_size))
+            self.gating_weights[channel] = nn.Parameter(torch.empty(self.emb_size, self.emb_size, device=device))
+            self.gating_bias[channel] = nn.Parameter(torch.empty(1, self.emb_size, device=device))
+            self.sgating_weights[channel] = nn.Parameter(torch.empty(self.emb_size, self.emb_size, device=device))
+            self.sgating_bias[channel] = nn.Parameter(torch.empty(1, self.emb_size, device=device))
             nn.init.xavier_uniform_(self.gating_weights[channel])
             nn.init.zeros_(self.gating_bias[channel])
             nn.init.xavier_uniform_(self.sgating_weights[channel])
             nn.init.zeros_(self.sgating_bias[channel])
-        self.attention = nn.Parameter(torch.FloatTensor(1, self.emb_size))
-        self.attention_mat = nn.Parameter(torch.FloatTensor(self.emb_size, self.emb_size))
+        self.attention = nn.Parameter(torch.empty(1, self.emb_size, device=device))
+        self.attention_mat = nn.Parameter(torch.empty(self.emb_size, self.emb_size, device=device))
         nn.init.xavier_uniform_(self.attention)
         nn.init.xavier_uniform_(self.attention_mat)
         # Initialize adjacency matrices
@@ -479,11 +479,11 @@ class MHCN(GraphRecommender):
 
     def hierarchical_self_supervision(self, em, adj):
         def row_shuffle(embedding):
-            indices = torch.randperm(embedding.size(0))
+            indices = torch.randperm(embedding.size(0), device=device)
             return embedding[indices]
         
         def row_column_shuffle(embedding):
-            indices_row = torch.randperm(embedding.size(0))
+            indices_row = torch.randperm(embedding.size(0), device=device)
             corrupted_embedding = embedding[indices_row]
             return corrupted_embedding
         
@@ -522,9 +522,9 @@ class MHCN(GraphRecommender):
         super(MHCN, self).train()
         for n, batch in enumerate(next_batch_pairwise(self.data, self.batch_size)):
             user_idx, i_idx, j_idx = batch
-            user_idx = torch.LongTensor(user_idx)
-            i_idx = torch.LongTensor(i_idx)
-            j_idx = torch.LongTensor(j_idx)
+            # user_idx = torch.LongTensor(user_idx)
+            # i_idx = torch.LongTensor(i_idx)
+            # j_idx = torch.LongTensor(j_idx)
             batch_user_emb, batch_pos_item_emb, batch_neg_item_emb, ss_loss, self.final_user_embeddings, self.final_item_embeddings = self.forward(user_idx, i_idx, j_idx)
             # Calculate loss
             rec_loss = bpr_loss(batch_user_emb, batch_pos_item_emb, batch_neg_item_emb)
@@ -538,14 +538,14 @@ class MHCN(GraphRecommender):
             total_loss.backward()
             optimizer.step()
             if (n + 1) % 100 == 0:
-                print(f'Training: {epoch + 1} Batch: {n + 1} Rec loss: {rec_loss.item():.4f} SSL loss: {ss_loss.item():.4f}')
+                print(f'Training: {epoch + 1} Batch: {n + 1} Rec loss: {rec_loss.item():.4f} SSL loss: {ss_loss.item():.4f} Total loss: {total_loss.item():.4f}')
 
     def save(self):
         self.best_user_emb, self.best_item_emb = self.final_user_embeddings.detach().cpu().numpy(), self.final_item_embeddings.detach().cpu().numpy()
 
     def predict(self, u):
         u = self.data.get_user_id(u)
-        return torch.matmul(torch.from_numpy(self.V), torch.from_numpy(self.U[u])).cpu().numpy()
+        return torch.matmul(torch.from_numpy(self.V).to(device), torch.from_numpy(self.U[u]).to(device)).cpu().numpy()
     
     def evaluate(self):
         rec_list = self.test()

@@ -779,6 +779,7 @@ class IterativeRecommender(Recommender):
             item_names = [self.data.id2item[iid] for iid in ids]
             recList[user] = list(zip(item_names, scores))
         measure = Measure.rankingMeasure(self.data.testSet_u, recList, top)
+        print(measure)
         if len(self.bestPerformance)>0:
             count = 0
             performance = {}
@@ -808,7 +809,7 @@ class IterativeRecommender(Recommender):
         print('Quick Ranking Performance '+self.foldInfo+' (Top-'+str(N)+'Item Recommendation)')
         measure = [m.strip() for m in measure[1:]]
         print('*Current Performance*')
-        print('Epoch:', str(epoch+1))
+        print('Epoch:', str(epoch+1)+',',' | '.join(measure))
         for m in measure[1:]:
             print(m.strip())
         bp = ''
@@ -1023,17 +1024,19 @@ class ESRF(SocialRecommender, GraphRecommender):
         self.K = conf['K']
         self.beta = conf['beta']
         self.n_layers = conf['n_layer']
+        self.maxEpoch = conf['num.max.epoch']
         self.n_layers_G = 2  
         self.n_layers_D = 2
         # self.K = 30
         # self.beta = 0.2
         self.regU = float(conf['reg_lambda']) if 'regU' in conf else 1e-3
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.bestU = None
         self.bestV = None
         self.bestPerformance = []
         self.U = None
         self.V = None
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 
     def readConfiguration(self):
         super(ESRF, self).readConfiguration()
@@ -1215,7 +1218,7 @@ class ESRF(SocialRecommender, GraphRecommender):
         self.bestPerformance = []
         self.initModel()
         print('pretraining...')
-        for epoch in range(1):
+        for epoch in range(self.maxEpoch // 3):
             for n, batch in enumerate(self.next_batch_pairwise()):
                 user_idx, i_idx, j_idx = batch
                 u_i = np.random.randint(0, self.num_users)
@@ -1241,9 +1244,11 @@ class ESRF(SocialRecommender, GraphRecommender):
                 self.d_optimizer.zero_grad()
                 d_loss.backward()
                 self.d_optimizer.step()
+                if (n + 1) % 100 == 0:
+                    print('Training', epoch + 1, 'Batch:', n + 1, 'loss:', d_loss.item())
             print(self.foldInfo, 'training:', epoch + 1, 'finished.')
         print('normal training with social relations...')
-        for epoch in range(1):
+        for epoch in range(self.maxEpoch // 3):
             for n, batch in enumerate(self.next_batch_pairwise()):
                 user_idx, i_idx, j_idx = batch
                 u_i = np.random.randint(0, self.num_users)
@@ -1269,9 +1274,11 @@ class ESRF(SocialRecommender, GraphRecommender):
                 self.d_optimizer.zero_grad()
                 d_loss.backward()
                 self.d_optimizer.step()
-            print(self.foldInfo, 'training finished.')
+                if (n + 1) % 100 == 0:
+                    print('Training', epoch + 1, 'Batch:', n + 1, 'loss:', d_loss.item())
+            print(self.foldInfo, 'training', self.maxEpoch//3 + epoch + 1, 'finished.')
         print('adversarial training with social relations...')
-        for epoch in range(1):
+        for epoch in range(self.maxEpoch // 3):
             for n, batch in enumerate(self.next_batch_pairwise()):
                 user_idx, i_idx, j_idx = batch
                 u_i = np.random.randint(0, self.num_users)
@@ -1305,7 +1312,9 @@ class ESRF(SocialRecommender, GraphRecommender):
                 self.g_optimizer.zero_grad()
                 g_loss.backward()
                 self.g_optimizer.step()
-            print(self.foldInfo, 'training:', 1//3 + 1//3 + epoch + 1, 'finished.')
+                if (n + 1) % 100 == 0:
+                    print('Training', epoch + 1, 'Batch:', n + 1, 'loss:', g_loss.item())
+            print(self.foldInfo, 'training:', self.maxEpoch//3 + self.maxEpoch//3 + epoch + 1, 'finished.')
             # Evaluate model after each epoch
             u_i = np.random.randint(0, self.num_users)
             alternative_neighborhood = self.generator(A_tensor, u_i)
@@ -1314,30 +1323,40 @@ class ESRF(SocialRecommender, GraphRecommender):
             self.U = self.user_embeddings_final.detach().cpu().numpy()
             self.V = self.item_embeddings_final.detach().cpu().numpy()
             # Evaluate performance using the parent class's ranking_performance method
-            current_performance = self.ranking_performance(epoch + 2 * 1 // 3)
+            current_performance = self.ranking_performance(epoch + 2 * self.maxEpoch // 3)
             # Track best embeddings - use metrics from parent class's tracking mechanism
             if self.bestPerformance and len(self.bestPerformance) > 1:
                 performance_dict = {}
                 for m in current_performance[1:]:
                     m = m.strip()
                     if ':' in m:
-                        parts = m.split(':', 1)
-                        if len(parts) == 2:
-                            k, v = parts
-                            try:
-                                performance_dict[k.strip()] = float(v.strip())
-                            except ValueError:
-                                print(f"[Warning] Cannot convert value to float: '{v}' in line '{m}'")
-                        else:
-                            print(f"[Warning] Invalid format: '{m}'")
-                    else:
-                        print(f"[Warning] Skipped invalid line: '{m}'")
+                      try:
+                          k, v = m.split(':', 1)
+                          performance_dict[k] = float(v)
+                      except ValueError:
+                          print(f"Skipping line with invalid format: {m}")
+                    # m = m.strip()
+                    # if ':' in m:
+                    #     parts = m.split(':', 1)
+                    #     if len(parts) == 2:
+                    #         k, v = parts
+                    #         try:
+                    #             performance_dict[k.strip()] = float(v.strip())
+                    #         except ValueError:
+                    #             print(f"[Warning] Cannot convert value to float: '{v}' in line '{m}'")
+                    #     else:
+                    #         print(f"[Warning] Invalid format: '{m}'")
+                    # else:
+                    #     print(f"[Warning] Skipped invalid line: '{m}'")
                 current_performance_sum = sum(performance_dict.values())
                 best_performance_sum = sum(self.bestPerformance[1].values())
                 if current_performance_sum > best_performance_sum:
                     self.bestU = self.U.copy()
                     self.bestV = self.V.copy()
                     # saveModel()
+                print('total loss:')
+                if (n + 1) % 100 == 0:
+                    print('Training', epoch + 1, 'Batch:', n + 1, 'loss:', g_loss.item())
         # Use best embeddings for inference
         if self.bestU is not None and self.bestV is not None:
             self.U, self.V = self.bestU, self.bestV
@@ -1415,6 +1434,7 @@ class ESRFTuner:
                 try:
                     model = ESRF(conf, self.train_set, self.test_set, self.social_data)
                     metrics = model.trainModel()
+                    print(f"[Info] Tuning {key} = {val}: {metrics}")
                     self.results.append({'config': conf, 'metrics': metrics})
                 except Exception as e:
                     print(f"[Error] Tuning {key} = {val}: {e}")
@@ -1436,7 +1456,7 @@ class ESRFTuner:
             'reg_lambda_b': params['reg_lambda_b'],
             'K': params['K'],
             'beta': params['beta'],
-            'num.max.epoch': 1,
+            'num.max.epoch': 10,
             'item.ranking.topN': [10, 20, 30, 50],
             'evaluation.setup': 'cv -k 1 -p on -rand-seed 1',
             'n_layer': params['n_layer']
