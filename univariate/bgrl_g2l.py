@@ -118,11 +118,12 @@ class Interaction:
     def user_rated(self, user): return list(self.training_set_u[user]), []
 
 
-def build_movielens_graph(interaction: Interaction):
+def build_movielens_graph(interaction: Interaction, hidden_dim):
   adj = interaction.norm_adj.tocoo()
   edge_index = torch.tensor([adj.row, adj.col], dtype=torch.long)
   num_nodes = interaction.user_num + interaction.item_num
-  x = torch.eye(num_nodes, dtype=torch.float)
+  emb_layer = nn.Embedding(num_nodes, hidden_dim)
+  x = emb_layer.weight
   return Data(x=x, edge_index=edge_index)
 
 
@@ -139,7 +140,7 @@ class Recommender:
 
 
 class GraphRecommender(Recommender):
-    def __init__(self, conf, train_set, test_set, encoder=None, **kwargs):
+    def __init__(self, conf, train_set, test_set, encoder=None, param_config=None, **kwargs):
         super().__init__(conf, train_set, test_set, **kwargs)
         self.data = Interaction(conf, train_set, test_set)
         self.topN = [int(n) for n in self.ranking]
@@ -147,7 +148,7 @@ class GraphRecommender(Recommender):
         self.bestPerformance = []
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.encoder = encoder
-        self.graph = build_movielens_graph(self.data).to(self.device)
+        self.graph = build_movielens_graph(self.data, hidden_dim=param_config['hidden_dim']).to(self.device)
 
     def predict(self, user):
         if self.encoder is None:
@@ -437,11 +438,11 @@ class BootstrapLatent(Loss):
         super(BootstrapLatent, self).__init__()
 
     def compute(self, anchor, sample, pos_mask, neg_mask=None, *args, **kwargs) -> torch.FloatTensor:
-        anchor = F.normalize(anchor, dim=-1, p=2)
-        sample = F.normalize(sample, dim=-1, p=2)
+        anchor = F.normalize(anchor, dim=-1)
+        sample = F.normalize(sample, dim=-1)
 
-        similarity = anchor @ sample.t()
-        loss = (similarity * pos_mask).sum(dim=-1)
+        # similarity = anchor @ sample.t()
+        loss = 2 - 2 * (sample * anchor).sum(dim=-1)
         return loss.mean()
 
 class EdgeRemoving(Augmentor):
@@ -571,48 +572,31 @@ class Encoder(torch.nn.Module):
         return g1, g2, h1_pred, h2_pred, g1_target, g2_target
 
 # Train loop
-def train(encoder_model, contrast_model, dataloader, optimizer, momentum):
+def train(encoder_model, contrast_model, data, optimizer, momentum):
     encoder_model.train()
-    total_loss = 0
-    for data in dataloader:
-        data = data.to(device)
-        if data.x is None:
-            num_nodes = data.batch.size(0)
-            data.x = torch.ones((num_nodes, 1), dtype=torch.float32).to(data.batch.device)
-        optimizer.zero_grad()
-        _, _, h1_pred, h2_pred, g1_target, g2_target = encoder_model(data.x, data.edge_index, batch=data.batch)
-        loss = contrast_model(h1_pred=h1_pred, h2_pred=h2_pred,
-                              g1_target=g1_target.detach(), g2_target=g2_target.detach(), batch=data.batch)
-        loss.backward()
-        optimizer.step()
-        encoder_model.update_target_encoder()
-        total_loss += loss.item()
-    return total_loss
+    optimizer.zero_grad()
+    g1, g2, h1_pred, h2_pred, g1_target, g2_target = encoder_model(data.x.to(device), data.edge_index.to(device))
+    loss = contrast_model(h1_pred=h1_pred, h2_pred=h2_pred, g1_target=g1_target.detach(), g2_target=g2_target.detach(), batch=torch.zeros(data.x.size(0), dtype=torch.long, device=device))
+    loss.backward()
+    optimizer.step()
+    encoder_model.update_target_encoder()
+    return loss.item()
 
 # Test encoder representation
-def test(encoder_model, dataloader):
+def test(encoder_model, data):
     encoder_model.eval()
-    xs, ys = [], []
-    for data in dataloader:
-        data = data.to(device)
-        if data.x is None:
-            num_nodes = data.batch.size(0)
-            data.x = torch.ones((num_nodes, 1), dtype=torch.float32).to(data.batch.device)
-        g1, g2, *_ = encoder_model(data.x, data.edge_index, batch=data.batch)
-        xs.append(torch.cat([g1, g2], dim=1))
-        ys.append(data.y)
-    x = torch.cat(xs, dim=0)
-    y = torch.cat(ys, dim=0)
-    split = get_split(num_samples=x.size(0), train_ratio=0.8, test_ratio=0.1)
-    return SVMEvaluator(linear=True)(x, y, split)
+    z, _, _ = encoder_model(data.x, data.edge_index, data.edge_attr)
+    split = get_split(num_samples=z.size()[0], train_ratio=0.1, test_ratio=0.8)
+    result = SVMEvaluator()(z, data.y, split)
+    return result
 
 
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print("Loading data from configuration files...")
     base_config = {
-        'training.set': './dataset/ml100k/train.txt',
-        'test.set': './dataset/ml100k/test.txt',
+        'training.set': 'train.txt',
+        'test.set': 'test.txt',
         'model': {'name': 'BGRL', 'type': 'graph'},
         'output': './results/',
         'item.ranking.topN': [10, 20, 30, 50]
@@ -622,9 +606,7 @@ def main():
     print(f"Loaded {len(train_set)} training interactions")
     print(f"Loaded {len(test_set)} test interactions")
     print("\nBGRL Hyperparameter Tuning Framework\n" + "="*80)
-    interaction = Interaction(base_config, train_set, test_set)
-    data = build_movielens_graph(interaction).to(device)
-
+    
     grid = {
         'hidden_dim': [16, 32, 64, 128, 256, 512],
         'num_layers': [1, 2, 3, 4],
@@ -661,8 +643,8 @@ def main():
             print(f"\n>>> [{run_count}/{total_runs}] {key} = {val}")
             param_config = default.copy()
             param_config[key] = val
-            # conf = make_config(param_config)
-
+            interaction = Interaction(base_config, train_set, test_set)
+            data = build_movielens_graph(interaction, hidden_dim=param_config['hidden_dim']).to(device)
             aug1 = Compose([EdgeRemoving(pe=param_config['edge_p']), FeatureMasking(pf=param_config['feat_p'])])
             aug2 = Compose([EdgeRemoving(pe=param_config['edge_p']), FeatureMasking(pf=param_config['feat_p'])])
             gconv = GConv(input_dim=param_config['hidden_dim'],
@@ -679,13 +661,12 @@ def main():
             optimizer = Adam(encoder.parameters(), lr=param_config['lr'], weight_decay=param_config['weight_decay'])
             # dataloader = DataLoader(dataset, batch_size=batch_size)
             best_metrics = None
-            for epoch in range(100):
-                loss = train(encoder, contrast,
-                            build_loader(train_set, param_config['batch_size'], param_config['hidden_dim']),
+            for epoch in range(1):
+                loss = train(encoder, contrast, data,
                             optimizer, momentum=param_config['momentum'])
                 print(f'Epoch {epoch+1}, Loss: {loss:.4f}')
 
-                recommender = GraphRecommender(base_config, train_set, test_set)
+                recommender = GraphRecommender(base_config, train_set, test_set, encoder, param_config=param_config)
                 fast_result = recommender.fast_evaluation(epoch, topK=base_config.get('item.ranking.topN', [10, 20, 30, 50]))
                 print(f"(Fast Eval) Recall={fast_result['Recall']:.4f}")
 
