@@ -34,20 +34,20 @@ class Metric:
     @staticmethod
     def hits(origin, res):
         return {u: len(set(origin[u]).intersection(i[0] for i in res[u])) for u in origin}
-    
+
     @staticmethod
     def hit_ratio(origin, hits):
         total = sum(len(origin[u]) for u in origin)
         return round(sum(hits.values()) / total, 5)
-    
+
     @staticmethod
     def precision(hits, N):
         return round(sum(hits.values()) / (len(hits) * N), 5)
-    
+
     @staticmethod
     def recall(hits, origin):
         return round(np.mean([hits[u] / len(origin[u]) for u in hits]), 5)
-    
+
     @staticmethod
     def NDCG(origin, res, N):
         score = 0
@@ -56,7 +56,7 @@ class Metric:
             IDCG = sum(1.0 / math.log2(i+2) for i in range(min(len(origin[u]), N)))
             score += DCG / IDCG if IDCG else 0
         return round(score / len(res), 5)
-    
+
 
 def ranking_evaluation(origin, res, N):
     results = []
@@ -113,9 +113,17 @@ class Interaction:
             col += [iid, uid]
             data += [1, 1]
         return coo_matrix((data, (row, col)), shape=(num_nodes, num_nodes))
-    
+
     def get_user_id(self, user): return self.user[user]
     def user_rated(self, user): return list(self.training_set_u[user]), []
+
+
+def build_movielens_graph(interaction: Interaction):
+  adj = interaction.norm_adj.tocoo()
+  edge_index = torch.tensor([adj.row, adj.col], dtype=torch.long)
+  num_nodes = interaction.user_num + interaction.item_num
+  x = torch.eye(num_nodes, dtype=torch.float)
+  return Data(x=x, edge_index=edge_index)
 
 
 class Recommender:
@@ -139,11 +147,20 @@ class GraphRecommender(Recommender):
         self.bestPerformance = []
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.encoder = encoder
+        self.graph = build_movielens_graph(self.data).to(self.device)
 
     def predict(self, user):
-        num_items = len(self.data.item)
-        scores = np.random.rand(num_items)
-        return scores
+        if self.encoder is None:
+          num_items = len(self.data.item)
+          return np.random.rand(num_items)
+        self.encoder.eval()
+        with torch.no_grad():
+          z, _ = self.encoder.online_encoder(self.graph.x, self.graph.edge_index)
+        user_id = self.data.get_user_id(user)
+        user_emb = z[user_id]
+        item_embs = z[self.data.user_num:]
+        scores = torch.matmul(item_embs, user_emb)
+        return scores.cpu().tolist()
 
     def test(self):
         rec_list = {}
@@ -157,12 +174,12 @@ class GraphRecommender(Recommender):
             scores = top_items.values.tolist()
             rec_list[user] = list(zip(item_names, scores))
         return rec_list
-    
+
     def evaluate(self, rec_list):
         self.result = ranking_evaluation(self.data.test_set, rec_list, self.topN)
         print(f"Evaluation result:\n{''.join(self.result)}")
         return self.result
-    
+
     def fast_evaluation(self, epoch, topK=None):
         print(f'Evaluating Epoch {epoch+1}...')
         rec_list = self.test()
@@ -246,7 +263,7 @@ def get_sampler(mode: str, intraview_negs: bool) -> Sampler:
         return CrossScaleSampler(intraview_negs=intraview_negs)
     else:
         raise RuntimeError(f'unsupported mode: {mode}')
-    
+
 def add_extra_mask(pos_mask, neg_mask=None, extra_pos_mask=None, extra_neg_mask=None):
     if extra_pos_mask is not None:
         pos_mask = torch.bitwise_or(pos_mask.bool(), extra_pos_mask.bool()).float()
@@ -343,7 +360,7 @@ class BaseSKLearnEvaluator(BaseEvaluator):
             'micro_f1': test_micro,
             'macro_f1': test_macro,
         }
-    
+
 class SVMEvaluator(BaseSKLearnEvaluator):
     def __init__(self, linear=True, params=None):
         if linear:
@@ -405,7 +422,7 @@ class FeatureMasking(Augmentor):
         x, edge_index, edge_weights = g.unfold()
         x = drop_feature(x, self.pf)
         return Graph(x=x, edge_index=edge_index, edge_weights=edge_weights)
-        
+
 class Loss(ABC):
     @abstractmethod
     def compute(self, anchor, sample, pos_mask, neg_mask, *args, **kwargs) -> torch.FloatTensor:
@@ -414,7 +431,7 @@ class Loss(ABC):
     def __call__(self, anchor, sample, pos_mask=None, neg_mask=None, *args, **kwargs) -> torch.FloatTensor:
         loss = self.compute(anchor, sample, pos_mask, neg_mask, *args, **kwargs)
         return loss
-    
+
 class BootstrapLatent(Loss):
     def __init__(self):
         super(BootstrapLatent, self).__init__()
@@ -436,7 +453,7 @@ class EdgeRemoving(Augmentor):
         x, edge_index, edge_weights = g.unfold()
         edge_index, edge_weights = dropout_adj(edge_index, edge_attr=edge_weights, p=self.pe)
         return Graph(x=x, edge_index=edge_index, edge_weights=edge_weights)
-    
+
 # Chuyển từ list interactions sang PyG Data
 def build_graph_from_interactions(edge_list, hidden_dim):
     from collections import defaultdict
@@ -605,13 +622,15 @@ def main():
     print(f"Loaded {len(train_set)} training interactions")
     print(f"Loaded {len(test_set)} test interactions")
     print("\nBGRL Hyperparameter Tuning Framework\n" + "="*80)
+    interaction = Interaction(base_config, train_set, test_set)
+    data = build_movielens_graph(interaction).to(device)
 
     grid = {
-        'hidden_dim': [32, 64, 128, 256],
+        'hidden_dim': [16, 32, 64, 128, 256, 512],
         'num_layers': [1, 2, 3, 4],
         'dropout': [0.2, 0.3, 0.4, 0.5],
         'lr': [1e-1, 1e-2, 1e-3, 1e-4],
-        'batch_size': [32, 64, 128, 256],
+        'batch_size': [16, 32, 64, 128, 256, 512],
         'edge_p': [0.1, 0.2, 0.3],
         'feat_p': [0.1, 0.2, 0.3],
         'momentum': [0.9, 0.99, 0.999],
@@ -646,21 +665,21 @@ def main():
 
             aug1 = Compose([EdgeRemoving(pe=param_config['edge_p']), FeatureMasking(pf=param_config['feat_p'])])
             aug2 = Compose([EdgeRemoving(pe=param_config['edge_p']), FeatureMasking(pf=param_config['feat_p'])])
-            gconv = GConv(input_dim=param_config['hidden_dim'], 
+            gconv = GConv(input_dim=param_config['hidden_dim'],
                           hidden_dim=param_config['hidden_dim'],
-                          num_layers=param_config['num_layers'], 
+                          num_layers=param_config['num_layers'],
                           dropout=param_config['dropout'],
                           activation=param_config['activation']
                           ).to(device)
-            encoder = Encoder(encoder=gconv, 
-                              augmentor=(aug1, aug2), 
+            encoder = Encoder(encoder=gconv,
+                              augmentor=(aug1, aug2),
                               hidden_dim=param_config['hidden_dim']
                               ).to(device)
             contrast = BootstrapContrast(loss=BootstrapLatent(), mode='G2L').to(device)
             optimizer = Adam(encoder.parameters(), lr=param_config['lr'], weight_decay=param_config['weight_decay'])
             # dataloader = DataLoader(dataset, batch_size=batch_size)
             best_metrics = None
-            for epoch in range(1):
+            for epoch in range(100):
                 loss = train(encoder, contrast,
                             build_loader(train_set, param_config['batch_size'], param_config['hidden_dim']),
                             optimizer, momentum=param_config['momentum'])
@@ -677,7 +696,7 @@ def main():
                 # ", ".join([f"Recall@{k}={metrics['Recall'][k]:.4f}, "
                 #            f"Precision@{k}={metrics['Precision'][k]:.4f}, "
                 #            f"NDCG@{k}={metrics['NDCG'][k]:.4f}, "
-                #            f"HR@{k}={metrics['HR'][k]:.4f}" 
+                #            f"HR@{k}={metrics['HR'][k]:.4f}"
                 #            for k in base_config['item.ranking.topN']]))
                 best_metrics = metrics
             results.append({'param': param_config, 'metrics': best_metrics})

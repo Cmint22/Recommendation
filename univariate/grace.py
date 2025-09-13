@@ -24,7 +24,7 @@ from sklearn.metrics import f1_score
 from typing import Optional, Tuple, NamedTuple, List
 from torch_geometric.utils import dropout_adj
 from torch_geometric.nn import GCNConv
-from torch_geometric.datasets import Planetoid
+from torch_geometric.data import Data
 
 
 
@@ -37,20 +37,20 @@ class Metric:
     @staticmethod
     def hits(origin, res):
         return {u: len(set(origin[u]).intersection(i[0] for i in res[u])) for u in origin}
-    
+
     @staticmethod
     def hit_ratio(origin, hits):
         total = sum(len(origin[u]) for u in origin)
         return round(sum(hits.values()) / total, 5)
-    
+
     @staticmethod
     def precision(hits, N):
         return round(sum(hits.values()) / (len(hits) * N), 5)
-    
+
     @staticmethod
     def recall(hits, origin):
         return round(np.mean([hits[u] / len(origin[u]) for u in hits]), 5)
-    
+
     @staticmethod
     def NDCG(origin, res, N):
         score = 0
@@ -59,7 +59,7 @@ class Metric:
             IDCG = sum(1.0 / math.log2(i+2) for i in range(min(len(origin[u]), N)))
             score += DCG / IDCG if IDCG else 0
         return round(score / len(res), 5)
-    
+
 
 def ranking_evaluation(origin, res, N):
     results = []
@@ -116,9 +116,18 @@ class Interaction:
             col += [iid, uid]
             data += [1, 1]
         return coo_matrix((data, (row, col)), shape=(num_nodes, num_nodes))
-    
+
     def get_user_id(self, user): return self.user[user]
     def user_rated(self, user): return list(self.training_set_u[user]), []
+
+
+def build_movielens_graph(interaction: Interaction):
+  adj = interaction.norm_adj.tocoo()
+  edge_index = torch.tensor([adj.row, adj.col], dtype=torch.long)
+  num_nodes = interaction.user_num + interaction.item_num
+  x = torch.eye(num_nodes, dtype=torch.float)
+  data = Data(x=x, edge_index=edge_index)
+  return data
 
 
 class Recommender:
@@ -142,11 +151,20 @@ class GraphRecommender(Recommender):
         self.bestPerformance = []
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.encoder = encoder
+        self.graph = build_movielens_graph(self.data).to(self.device)
 
     def predict(self, user):
-        num_items = len(self.data.item)
-        scores = np.random.rand(num_items)
-        return scores
+        if self.encoder is None:
+          num_items = len(self.data.item)
+          return np.random.rand(num_items)
+        self.encoder.eval()
+        with torch.no_grad():
+            z, _, _ = self.encoder(self.graph.x, self.graph.edge_index)
+        user_id = self.data.get_user_id(user)
+        user_emb = z[user_id]
+        item_embs = z[self.data.user_num:]
+        scores = torch.matmul(item_embs, user_emb)
+        return scores.cpu().tolist()
 
     def test(self):
         rec_list = {}
@@ -160,12 +178,12 @@ class GraphRecommender(Recommender):
             scores = top_items.values.tolist()
             rec_list[user] = list(zip(item_names, scores))
         return rec_list
-    
+
     def evaluate(self, rec_list):
         self.result = ranking_evaluation(self.data.test_set, rec_list, self.topN)
         print(f"Evaluation result:\n{''.join(self.result)}")
         return self.result
-    
+
     def fast_evaluation(self, epoch, topK=None):
         print(f'Evaluating Epoch {epoch+1}...')
         rec_list = self.test()
@@ -190,7 +208,7 @@ class Loss(ABC):
     def __call__(self, anchor, sample, pos_mask=None, neg_mask=None, *args, **kwargs) -> torch.FloatTensor:
         loss = self.compute(anchor, sample, pos_mask, neg_mask, *args, **kwargs)
         return loss
-    
+
 
 class InfoNCE(Loss):
     def __init__(self, tau):
@@ -292,7 +310,7 @@ class LogisticRegression(nn.Module):
     def forward(self, x):
         z = self.fc(x)
         return z
-    
+
 
 class BaseEvaluator(ABC):
     @abstractmethod
@@ -358,7 +376,7 @@ class LREvaluator(BaseEvaluator):
             'micro_f1': best_test_micro,
             'macro_f1': best_test_macro
         }
-    
+
 
 class Sampler(ABC):
     def __init__(self, intraview_negs=False):
@@ -427,7 +445,7 @@ class CrossScaleSampler(Sampler):
 
         neg_mask = 1. - pos_mask
         return anchor, sample, pos_mask, neg_mask
-    
+
 
 def get_sampler(mode: str, intraview_negs: bool) -> Sampler:
     if mode in {'L2L', 'G2G'}:
@@ -436,7 +454,7 @@ def get_sampler(mode: str, intraview_negs: bool) -> Sampler:
         return CrossScaleSampler(intraview_negs=intraview_negs)
     else:
         raise RuntimeError(f'unsupported mode: {mode}')
-    
+
 
 def add_extra_mask(pos_mask, neg_mask=None, extra_pos_mask=None, extra_neg_mask=None):
     if extra_pos_mask is not None:
@@ -447,7 +465,7 @@ def add_extra_mask(pos_mask, neg_mask=None, extra_pos_mask=None, extra_neg_mask=
         neg_mask = 1. - pos_mask
     return pos_mask, neg_mask
 
-    
+
 class DualBranchContrast(torch.nn.Module):
     def __init__(self, loss: Loss, mode: str, intraview_negs: bool = False, **kwargs):
         super(DualBranchContrast, self).__init__()
@@ -482,7 +500,7 @@ class DualBranchContrast(torch.nn.Module):
         l2 = self.loss(anchor=anchor2, sample=sample2, pos_mask=pos_mask2, neg_mask=neg_mask2, **self.kwargs)
 
         return (l1 + l2) * 0.5
-    
+
 
 class GConv(torch.nn.Module):
     def __init__(self, input_dim, hidden_dim, activation, num_layers):
@@ -547,8 +565,8 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print("Loading data from configuration files...")
     base_config = {
-        'training.set': 'train.txt',
-        'test.set': 'test.txt',
+        'training.set': './dataset/ml100k/train.txt',
+        'test.set': './dataset/ml100k/test.txt',
         'model': {'name': 'GRACE', 'type': 'graph'},
         'output': './results/',
         'item.ranking.topN': [10, 20, 30, 50]
@@ -558,9 +576,11 @@ def main():
     print(f"Loaded {len(train_set)} training interactions")
     print(f"Loaded {len(test_set)} test interactions")
     print("\nGRACE Hyperparameter Tuning Framework\n" + "="*80)
+    interaction = Interaction(base_config, train_set, test_set)
+    data = build_movielens_graph(interaction).to(device)
 
     grid = {
-        'batch_size': [64, 128, 256, 512, 1024, 2048],
+        'batch_size': [32, 64, 128, 256, 512, 1024],
         'lr': [1e-3, 5e-3, 1e-2, 5e-2],
         'hidden_dim': [32, 64, 128, 256, 512, 1024],
         'proj_dim': [16, 32, 64],
@@ -585,9 +605,6 @@ def main():
     print(f"\nTotal combinations: {total_runs}\n" + '='*80)
     results = []
     run_count = 0
-    path = osp.join(osp.expanduser('~'), 'datasets')
-    dataset = Planetoid(path, name='Cora', transform=T.NormalizeFeatures())
-    data = dataset[0].to(device)
     for key, values in grid.items():
         print(f"\n{'='*80}\n Tuning hyperparameter: {key}")
         for val in values:
@@ -597,13 +614,13 @@ def main():
             param_config[key] = val
             aug1 = Compose([EdgeRemoving(pe=param_config['pe']), FeatureMasking(pf=param_config['pf'])])
             aug2 = Compose([EdgeRemoving(pe=param_config['pe']), FeatureMasking(pf=param_config['pf'])])
-            gconv = GConv(input_dim=dataset.num_features, 
-                          hidden_dim=param_config['hidden_dim'], 
-                          activation=param_config['activation'], 
+            gconv = GConv(input_dim=data.num_features,
+                          hidden_dim=param_config['hidden_dim'],
+                          activation=param_config['activation'],
                           num_layers=param_config['num_layers']).to(device)
-            encoder = Encoder(encoder=gconv, 
-                                    augmentor=(aug1, aug2), 
-                                    hidden_dim=param_config['hidden_dim'], 
+            encoder = Encoder(encoder=gconv,
+                                    augmentor=(aug1, aug2),
+                                    hidden_dim=param_config['hidden_dim'],
                                     proj_dim=param_config['proj_dim']).to(device)
             contrast = DualBranchContrast(loss=InfoNCE(tau=param_config['tau']), mode='L2L', intraview_negs=True).to(device)
             optimizer = Adam(encoder.parameters(), lr=param_config['lr'])
@@ -612,7 +629,7 @@ def main():
                 loss = train(encoder, contrast, data, optimizer)
             print(f'Epoch {epoch+1}, Loss: {loss:.4f}')
 
-            recommender = GraphRecommender(base_config, train_set, test_set)
+            recommender = GraphRecommender(base_config, train_set, test_set, encoder=encoder)
             fast_result = recommender.fast_evaluation(epoch, topK=base_config.get('item.ranking.topN', [10, 20, 30, 50]))
             print(f"(Fast Eval): Recall={fast_result['Recall']:.4f}")
 

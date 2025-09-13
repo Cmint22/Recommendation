@@ -21,7 +21,7 @@ from abc import ABC, abstractmethod
 from sklearn.metrics import f1_score
 from typing import Optional, Tuple, NamedTuple, List
 from torch_geometric.nn import GCNConv
-from torch_geometric.datasets import WikiCS
+from torch_geometric.data import Data
 from torch_geometric.utils import dropout_adj
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
@@ -121,6 +121,14 @@ class Interaction:
     def user_rated(self, user): return list(self.training_set_u[user]), []
 
 
+def build_movielens_graph(interaction: Interaction):
+  adj = interaction.norm_adj.tocoo()
+  edge_index = torch.tensor([adj.row, adj.col], dtype=torch.long)
+  x = torch.eye(interaction.user_num + interaction.item_num, dtype=torch.float)
+  data = Data(x=x, edge_index=edge_index)
+  return data
+
+
 class Recommender:
     def __init__(self, conf, train_set, test_set, **kwwrgs):
         self.config = conf
@@ -142,11 +150,17 @@ class GraphRecommender(Recommender):
         self.bestPerformance = []
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.encoder = encoder
+        self.graph = build_movielens_graph(self.data).to(self.device)
 
     def predict(self, user):
-        num_items = len(self.data.item)
-        scores = np.random.rand(num_items)
-        return scores
+        self.encoder.eval()
+        with torch.no_grad():
+            z, _, _ = self.encoder(self.graph.x, self.graph.edge_index)
+        user_id = self.data.get_user_id(user)
+        user_emb = z[user_id]
+        item_embs = z[self.data.user_num:]
+        scores = torch.matmul(item_embs, user_emb)
+        return scores.cpu().tolist()
 
     def test(self):
         rec_list = {}
@@ -452,6 +466,8 @@ def main():
     print(f"Loaded {len(train_set)} training interactions")
     print(f"Loaded {len(test_set)} test interactions")
     print("\nG-BT Hyperparameter Tuning Framework\n" + "="*80)
+    interaction = Interaction(base_config, train_set, test_set)
+    data = build_movielens_graph(interaction).to(device)
 
     grid = {
         'num_features': [1, 2, 3, 4],
@@ -459,7 +475,7 @@ def main():
         'momentum': [0.01, 0.05, 0.1],
         'pe': [0.1, 0.3, 0.5],
         'pf': [0.1, 0.2, 0.3],
-        'hidden_dim': [128, 256, 512, 1024],
+        'hidden_dim': [32, 64, 128, 256, 512, 1024],
         'lr': [1e-4, 5e-4, 1e-3, 5e-3]
     }
     default = {
@@ -476,9 +492,6 @@ def main():
     print(f"\nTotal combinations : {total_runs}\n" + '='*80)
     results = []
     run_count = 0
-    path = osp.join(osp.expanduser('~'), 'datasets', 'WikiCS')
-    dataset = WikiCS(path, transform=T.NormalizeFeatures())
-    data = dataset[0].to(device)
     for key, values in grid.items():
         print(f"\n{'='*80}\n Tuning hyperparameter: {key}")
         for val in values:
@@ -500,12 +513,12 @@ def main():
                 optimizer=optimizer,
                 T_max=4000)
             best_metrics = None
-            for epoch in range(1):
+            for epoch in range(100):
                 loss = train(encoder, contrast, data, optimizer, momentum=param_config['momentum'])
                 scheduler.step()
             print(f'Epoch {epoch+1}, Loss: {loss:.4f}')
 
-            recommender = GraphRecommender(base_config, train_set, test_set)
+            recommender = GraphRecommender(base_config, train_set, test_set, encoder=encoder)
             fast_result = recommender.fast_evaluation(epoch, topK=base_config.get('item.ranking.topN', [10, 20, 30, 50]))
             print(f"(Fast Eval): Recall={fast_result['Recall']:.4f}")
 
